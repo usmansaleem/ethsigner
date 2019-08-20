@@ -15,11 +15,7 @@ commands:
     description: "Prepare"
     steps:
       - checkout
-      - run:
-          name: Install Packages - LibSodium
-          command: |
-            sudo apt-get update
-            sudo apt-get install -y libsodium18 libsodium-dev apt-transport-https
+
       - restore_cache:
           name: Restore cached gradle dependencies
           keys:
@@ -32,6 +28,11 @@ jobs:
     executor: pegasys_executor_med
     steps:
       - prepare
+      - run:
+          name: Install Packages - LibSodium
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y libsodium18 libsodium-dev apt-transport-https
       - run:
           name: Build
           command: |
@@ -61,20 +62,19 @@ jobs:
     machine: true
     steps:
       - prepare
-      - attach_workspace:
-          at: ~/project
       - run:
           name: Install Packages - Java 11
           command: |
             sudo add-apt-repository -y ppa:openjdk-r/ppa
             sudo apt update
-            sudo apt install -y openjdk-11-jdk
+            sudo apt install -y openjdk-11-jdk libsodium18 libsodium-dev apt-transport-https
+            sudo update-java-alternatives -s java-1.11.0-openjdk-amd64
+            java -version
       - run:
           name: Acceptance Test
           no_output_timeout: 20m
           command: |
-            sudo dpkg -l *openjdk*
-            ./gradlew --no-daemon --parallel --info acceptanceTest
+            ./gradlew --no-daemon --parallel --info build acceptanceTest
       - store_artifacts:
           name: Build Artifacts
           path: ./build
@@ -101,10 +101,7 @@ workflows:
   default:
     jobs:
       - build
-
-      - acceptanceTests:
-          requires:
-            - build
+      - acceptanceTests
       - ls:
           requires:
             - build
