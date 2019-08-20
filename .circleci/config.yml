@@ -1,0 +1,110 @@
+---
+version: 2.1
+executors:
+  pegasys_executor_med:
+    docker:
+      - image: circleci/openjdk:11.0.4-jdk-stretch
+    resource_class: medium
+    working_directory: ~/project
+    environment:
+      # JAVA_TOOL_OPTIONS: -Xmx2048m
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=1
+
+commands:
+  prepare:
+    description: "Prepare"
+    steps:
+      - checkout
+      - run:
+          name: Install Packages - LibSodium
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y libsodium18 libsodium-dev apt-transport-https
+      - restore_cache:
+          name: Restore cached gradle dependencies
+          keys:
+            - deps-{{ checksum "build.gradle" }}-{{ .Branch }}-{{ .Revision }}
+            - deps-{{ checksum "build.gradle" }}
+            - deps-
+
+jobs:
+  build:
+    executor: pegasys_executor_med
+    steps:
+      - prepare
+      - run:
+          name: Build
+          command: |
+            ./gradlew --no-daemon --parallel build
+      - save_cache:
+          name: Caching gradle dependencies
+          key: deps-{{ checksum "build.gradle" }}-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - .gradle
+            - ~/.gradle
+      - run:
+          name: Test
+          no_output_timeout: 20m
+          command: |
+            ./gradlew --no-daemon --parallel test
+      - run:
+          name: Integration Test
+          no_output_timeout: 20m
+          command: |
+            ./gradlew --no-daemon --parallel --info integrationTest
+      - persist_to_workspace:
+          root: ~/project
+          paths:
+            - ./
+
+  acceptanceTests:
+    machine: true
+    steps:
+      - prepare
+      - attach_workspace:
+          at: ~/project
+      - run:
+          name: Install Packages - Java 11
+          command: |
+            sudo add-apt-repository -y ppa:openjdk-r/ppa
+            sudo apt update
+            sudo apt install -y openjdk-11-jdk
+      - run:
+          name: Acceptance Test
+          no_output_timeout: 20m
+          command: |
+            sudo dpkg -l *openjdk*
+            ./gradlew --no-daemon --parallel --info acceptanceTest
+      - store_artifacts:
+          name: Build Artifacts
+          path: ./build
+          destination: build
+
+  ls:
+    executor: pegasys_executor_med
+    steps:
+      - run:
+          name: Install Packages - LibSodium
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y tree
+      - attach_workspace:
+          at: ~/project
+      - run:
+          name: Build
+          command: |
+            tree -L 10 .
+
+
+workflows:
+  version: 2
+  default:
+    jobs:
+      - build
+
+      - acceptanceTests:
+          requires:
+            - build
+      - ls:
+          requires:
+            - build
