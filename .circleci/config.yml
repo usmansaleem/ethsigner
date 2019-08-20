@@ -1,9 +1,10 @@
 ---
 version: 2.1
 
-commands:
-  prepare:
-    description: "Prepare"
+jobs:
+  build:
+    machine: true
+    working_directory: ~/project
     steps:
       - checkout
       - restore_cache:
@@ -12,15 +13,6 @@ commands:
             - deps-{{ checksum "build.gradle" }}-{{ .Branch }}-{{ .Revision }}
             - deps-{{ checksum "build.gradle" }}
             - deps-
-
-jobs:
-  build:
-    machine: true
-    working_directory: ~/project
-    environment:
-      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2
-    steps:
-      - prepare
       - run:
           name: Install Packages - Java 11 & libsodium
           command: |
@@ -33,12 +25,6 @@ jobs:
           name: Build
           command: |
             ./gradlew --no-daemon --parallel build
-      - save_cache:
-          name: Caching gradle dependencies
-          key: deps-{{ checksum "build.gradle" }}-{{ .Branch }}-{{ .Revision }}
-          paths:
-            - .gradle
-            - ~/.gradle
       - run:
           name: Test
           no_output_timeout: 20m
@@ -54,6 +40,12 @@ jobs:
           no_output_timeout: 20m
           command: |
             ./gradlew --no-daemon --parallel acceptanceTest
+      - save_cache:
+          name: Caching gradle dependencies
+          key: deps-{{ checksum "build.gradle" }}-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - .gradle
+            - ~/.gradle
       - store_artifacts:
           name: Build Artifacts
           path: ./build
