@@ -3,6 +3,45 @@ version: 2.1
 
 jobs:
   build:
+    docker:
+      - image: circleci/openjdk:11.0.4-jdk-stretch
+    resource_class: medium
+    working_directory: ~/project
+    environment:
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.parallel=true -Dorg.gradle.workers.max=2
+    steps:
+      - checkout
+      - restore_cache:
+          name: Restore cached gradle dependencies
+          keys:
+            - deps-{{ checksum "build.gradle" }}-{{ .Branch }}-{{ .Revision }}
+            - deps-{{ checksum "build.gradle" }}
+            - deps-
+      - run:
+          name: Install Packages libsodium
+          command: |
+            sudo apt update
+            sudo apt install -y libsodium18 libsodium-dev apt-transport-https
+      - run:
+          name: Build
+          command: |
+            ./gradlew --no-daemon --parallel build
+      - run:
+          name: Test
+          no_output_timeout: 20m
+          command: |
+            ./gradlew --no-daemon --parallel test
+      - run:
+          name: Integration Test
+          no_output_timeout: 20m
+          command: |
+            ./gradlew --no-daemon --parallel integrationTest
+      - store_artifacts:
+          name: Build Artifacts
+          path: ./build
+          destination: build
+
+  acceptanceTests:
     machine: true
     working_directory: ~/project
     steps:
@@ -22,34 +61,10 @@ jobs:
             sudo update-java-alternatives -s java-1.11.0-openjdk-amd64
             java -version
       - run:
-          name: Build
-          command: |
-            ./gradlew --no-daemon --parallel build
-      - run:
-          name: Test
-          no_output_timeout: 20m
-          command: |
-            ./gradlew --no-daemon --parallel test
-      - run:
-          name: Integration Test
-          no_output_timeout: 20m
-          command: |
-            ./gradlew --no-daemon --parallel integrationTest
-      - run:
           name: Acceptance Test
           no_output_timeout: 20m
           command: |
             ./gradlew --no-daemon --parallel acceptanceTest
-      - save_cache:
-          name: Caching gradle dependencies
-          key: deps-{{ checksum "build.gradle" }}-{{ .Branch }}-{{ .Revision }}
-          paths:
-            - .gradle
-            - ~/.gradle
-      - store_artifacts:
-          name: Build Artifacts
-          path: ./build
-          destination: build
       - run:
           name: ls
           command: |
@@ -61,3 +76,4 @@ workflows:
   default:
     jobs:
       - build
+      - acceptanceTests
